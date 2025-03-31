@@ -1,0 +1,296 @@
+#!/bin/bash
+
+# Arquivo de configuração do script
+CONFIG_FILE="$HOME/.config/virt-qmod/virt-qmod.env"
+
+# Verifica se o script está sendo executado como sudo
+if [[ -n "$SUDO_USER" ]]; then
+    # Se estiver rodando com sudo, redefinimos HOME para o diretório do usuário original
+    # `eval echo ~$SUDO_USER` retorna o home do usuário que chamou o sudo
+    HOME=$(eval echo ~$SUDO_USER)
+
+    # Atualizamos o caminho do arquivo de configuração para garantir que ele seja lido do usuário correto
+    CONFIG_FILE="$HOME/.config/virt-qmod/virt-qmod.env"
+fi
+
+# Carrega o arquivo de configuração criado
+source "$CONFIG_FILE"
+
+# Variáveis de mensagens do sistema
+option1="Criar uma nova VM"
+option2="Listar VMs"
+option3="Iniciar uma VM"
+option4="Parar uma VM"
+option5="Remover uma VM"
+option6="Abrir VM no Virt Viewer"
+option7="Editar XML da VM"
+option8="Listar snapshots de uma VM"
+option9="Criar um snapshot"
+option10="Deletar um snapshot"
+option11="Exibir informações do disco"
+option12="Aumentar o tamanho do Disco da VM"
+option13="Diminuir o tamanho do Disco da VM"
+option14="Anexar ISO à VM"
+option15="Desanexar ISO da VM"
+option16="Sair"
+column1="Opções"
+title1="Gerenciar VMs"
+button1="$option16"
+text1="Opção inválida!"
+# Função para executar comandos com sudo e mensagens do yad
+run_with_sudo() {
+    COMMAND="$@"
+    PASSWORD=$(yad --title="Senha do sudo" --entry --hide-text)
+    if [ -z "$PASSWORD" ]; then
+        yad --error --text="Nenhuma senha fornecida."
+        exit 1
+    fi
+
+    # Use a senha fornecida para executar o comando com sudo
+    echo "$PASSWORD" | sudo -S bash -c "$COMMAND"
+
+    if [ ! $? -eq 0 ]; then
+        yad --error --text="Erro ao executar o comando."
+    fi
+}
+
+# Função para selecionar uma VM existente
+select_vm() {
+    # Obtém a lista de VMs e remove as duas primeiras linhas (cabeçalho)
+    text=$(virt-qmod list | sed '1,2d')
+
+    # Calcula o número de linhas e o comprimento máximo de uma linha
+    lines=$(echo "$text" | wc -l)
+    max_length=$(echo "$text" | awk '{ print length }' | sort -nr | head -1)
+
+    # Define a altura e largura da janela
+    height=$((lines * 30 + 100))  # Altura baseada no número de linhas
+    width=$((max_length * 5 + 100))  # Largura baseada no comprimento máximo da linha
+
+    # Exibe a lista de VMs usando yad
+    local vm_name
+    vm_name=$(echo "$text" | awk '{print $2}' | yad --list \
+        --title="Selecione a VM" \
+        --column="Nome" \
+        --button="Voltar:1" \
+        --button="OK:0" \
+        --height=$height \
+        --width=$width \
+        --center)  # Centraliza a janela na tela
+
+    # Remove o caractere "|" que o yad adiciona à saída
+    vm_name=$(echo "$vm_name" | sed 's/|//')
+
+    echo "$vm_name"
+}
+
+# Função para criar uma nova máquina virtual
+create() {
+    # Solicitar a seleção do arquivo ISO separadamente usando zenity antes do formulário
+    CDROM=$(zenity --file-selection --title="Selecione a ISO de instalação")
+    if [ $? -ne 0 ]; then return; fi
+
+    FORM_OUTPUT=$(yad --form --title="Criar Máquina Virtual" --text="Preencha os detalhes da VM:" \
+        --field="Nome da VM": "$NAME" \
+        --field="RAM (em MB)": "$RAM" \
+        --field="vCPUs": "$VCPUS" \
+        --field="Tamanho do Disco (em GB)": "$DISK" \
+        --field="Rede (padrão: ${NETWORK})": "$NETWORK" \
+        --field="Gráficos":CB "spice,listen=0.0.0.0!vnc,listen=0.0.0.0" \
+        --field="OS Variant":CB "$OSVARIANT!$(virt-qmod list_variant | tr '\n' '!')" \
+        --separator="|" \
+        --image="path/to/image/icon.png" \
+        --image-on-top \
+        --width=400 \
+        --height=300 )
+        # --theme="Adwaita-dark")
+
+    if [ $? -ne 0 ]; then return; fi
+
+    IFS='|' read -r VM_NAME RAM VCPUS DISK_SIZE NETWORK GRAPHICS OS_VARIANT <<< "$FORM_OUTPUT"
+
+    virt-qmod create --name "$VM_NAME" --ram "$RAM" --vcpus "$VCPUS" --disk "${DISK_SIZE}" --cdrom "$CDROM" --network "$NETWORK" --graphics "$GRAPHICS" --os-variant "$OS_VARIANT"
+    yad --info --text="VM criada com sucesso!" # --theme="Adwaita-dark"
+}
+# Função para listar VMs
+list() {
+            text=$(virt-qmod list | sed '1,2d')
+            lines=$(echo "$text" | wc -l)
+            max_length=$(echo "$text" | awk '{ print length }' | sort -nr | head -1)
+            height=$((lines * 70))  # Altura
+            width=$((max_length * 10))  # Largura
+            yad --list --title="Lista de VMs" --width=$width --height=$height \
+            --column="Id" --column="Nome" --column="Estado" \
+            --button="OK:0" \
+            $(echo "$text" | awk '{print $1, $2, $3}')
+}
+# Função para iniciar uma VM
+start(){
+            VM_NAME=$(select_vm)
+            [ -n "$VM_NAME" ] && virt-qmod start "$VM_NAME" && yad --info --text="VM '$VM_NAME' iniciada!"
+}
+# Função para parar uma VM
+stop() {
+            VM_NAME=$(select_vm)
+            [ -n "$VM_NAME" ] && virt-qmod stop_force "$VM_NAME" && yad --info --text="VM '$VM_NAME' parada!"
+}
+# Função para remover uma VM
+remove() {
+            VM_NAME=$(select_vm)
+            [ -n "$VM_NAME" ] && virt-qmod remove "$VM_NAME" && yad --info --text="VM '$VM_NAME' removida!"
+}
+# Função para abrir uma VM no virt-viewer
+open() {
+            VM_NAME=$(select_vm)
+            echo $VM_NAME
+            [ -n "$VM_NAME" ] && virt-qmod open "$VM_NAME"
+}
+# Função para editar xml da VM
+edit() {
+            VM_NAME=$(select_vm)
+            [ -n "$VM_NAME" ] && virt-qmod edit "$VM_NAME"
+}
+# Função para listar snapshots
+list_snapshots() {
+            VM_NAME=$(select_vm)
+            if [ -n "$VM_NAME" ]; then
+                text=$(virt-qmod list_snapshots "$VM_NAME" | sed '1,2d')
+                lines=$(echo "$text" | wc -l)
+                max_length=$(echo "$text" | awk '{ print length }' | sort -nr | head -1)
+                height=$((lines * 90))  # Altura
+                width=$((max_length * 8))  # Largura
+                yad --list --title="Snapshots de $VM_NAME" --width=$width --height=$height \
+                --column="Nome" --column="Tempo de criação" --column="Estado" \
+                --button="OK:0" \
+                $(echo "$text" | awk '{print $1, $2, $3}')
+            fi
+}
+# Função para criar um snapshot
+create_snapshot() {
+            VM_NAME=$(select_vm)
+            [ -z "$VM_NAME" ] && continue
+            SNAPSHOT_NAME=$(yad --entry --title="Criar Snapshot" --text="Nome do snapshot:")
+            [ -z "$SNAPSHOT_NAME" ] && continue
+            virt-qmod create_snapshot "$VM_NAME" "$SNAPSHOT_NAME" && yad --info --text="Snapshot '$SNAPSHOT_NAME' criado!"
+}
+# Função para deletar um snapshot
+delete_snapshot() {
+            VM_NAME=$(select_vm)
+            [ -z "$VM_NAME" ] && continue
+            SNAPSHOT_NAME=$(yad --entry --title="Deletar Snapshot" --text="Nome do snapshot:")
+            [ -z "$SNAPSHOT_NAME" ] && continue
+            virt-qmod delete_snapshot "$VM_NAME" "$SNAPSHOT_NAME" && yad --info --text="Snapshot '$SNAPSHOT_NAME' deletado!"
+}
+# Função para exibir informações do disco
+show_disk_info() {
+            VM_NAME=$(select_vm)
+            if [ -n "$VM_NAME" ]; then
+                text=$(virt-qmod show_disk_info "$VM_NAME" | sed '1,2d')
+                lines=$(echo "$text" | wc -l)
+                max_length=$(echo "$text" | awk '{ print length }' | sort -nr | head -1)
+                height=$((lines * 90))  # Altura
+                width=$((max_length * 8))  # Largura
+                yad --list --title="Disco da VM $VM_NAME" --width=$width --height=$height \
+                --column="Alvo" --column="Capacidade" --column="Alocação" --column="Physical" \
+                --button="OK:0" \
+                $(echo "$text" | awk '{print $1, $2, $3, $4}')
+fi
+}
+# Função para aumentar o tamanho do disco
+resize_disk() {
+            VM_NAME=$(select_vm)
+            [ -z "$VM_NAME" ] && continue
+            DISK_SIZE=$(yad --entry \
+            --title="Aumentar o tamanho do Disco" \
+            --text="Informe o tamanho adicional em GB (ex: 10):\n\n\
+            Nota: O valor informado será \"adicionado\" ao tamanho atual do disco.\n\
+            Por exemplo, se o disco tem \"50G\" e você aumentar em \"10G\", o novo tamanho será \"60G\"."\
+            --button="Cancelar:1" --button="Confirmar:0" \
+            --width=400 --height=200)
+            [ -z "$DISK_SIZE" ] && continue
+            run_with_sudo virt-qmod resize_disk "$VM_NAME" "$DISK_SIZE" && yad --info --text="Disco redimensionado para '$DISK_SIZE'!"
+}
+# Função para diminuir o tamano do disco
+shrink_disk() {
+            VM_NAME=$(select_vm)
+            [ -z "$VM_NAME" ] && continue
+            DISK_SIZE=$(yad --entry \
+            --title="Diminuir o tamanho do Disco" \
+            --text="Informe o tamanho a ser reduzido em GB (ex: 10):\n\n\
+            Nota: O valor informado será \"subtraído\" do tamanho atual do disco.\n\
+            Por exemplo, se o disco tem \"50G\" e você reduzir em \"10G\", o novo tamanho será \"40G\"." \
+            --button="Cancelar:1" --button="Confirmar:0" \
+            --width=400 --height=200)
+            [ -z "$DISK_SIZE" ] && continue
+            run_with_sudo virt-qmod shrink_disk "$VM_NAME" "$DISK_SIZE" && yad --info --text="Disco redimensionado para '$DISK_SIZE'!"
+}
+# Função para atachar uma ISO na VM e configurar o BOOT CDROM como primeiro boot
+attach_iso() {
+            VM_NAME=$(select_vm)
+            [ -z "$VM_NAME" ] && continue
+            ISO_FILE=$(zenity --file-selection --title="Selecione a ISO de instalação")
+            if [ $? -ne 0 ]; then return; fi
+            [ -z "$ISO_FILE" ] && continue
+            virt-qmod attach_iso "$VM_NAME" "$ISO_FILE" && virt-qmod set_boot_cdrom "$VM_NAME" && yad --info --text="ISO anexada!"
+}
+# Função para desanexar o arquivo ISO da VM
+detach_iso() {
+            VM_NAME=$(select_vm)
+            [ -z "$VM_NAME" ] && continue
+            ISO_FILE=$(yad --entry --title="Digite o nome do ISO" --text="Nome do arquivo ISO para desanexar:")
+            [ -z "$ISO_FILE" ] && continue
+            virt-qmod detach_iso "$VM_NAME" "$ISO_FILE" && yad --info --text="ISO desanexada!"
+}
+# Definição do array de opções
+options=(
+    "$option1"
+    "$option2"
+    "$option3"
+    "$option4"
+    "$option5"
+    "$option6"
+    "$option7"
+    "$option8"
+    "$option9"
+    "$option10"
+    "$option11"
+    "$option12"
+    "$option13"
+    "$option14"
+    "$option15"
+    # "$option16"
+)
+
+# Menu principal
+while true; do
+    num_options=${#options[@]}
+    height=$((num_options * 32))  # Altura
+    width=400  # Largura fixa para evitar cortes
+
+    OPTION=$(yad --list --title="$title1" --button="$button1:1" \
+        --column="$column1" "${options[@]}" \
+        --height=$height --width=$width | awk -F'|' '{print $1}')
+
+    # Se o usuário clicar em "Voltar", sair do loop
+    [ -z "$OPTION" ] && exit 0
+
+case "$OPTION" in
+    "$option1") create ;;
+    "$option2") list ;;
+    "$option3") start ;;
+    "$option4") stop ;;
+    "$option5") remove ;;
+    "$option6") open ;;
+    "$option7") edit ;;
+    "$option8") list_snapshots ;;
+    "$option9") create_snapshot ;;
+    "$option10") delete_snapshot ;;
+    "$option11") show_disk_info ;;
+    "$option12") resize_disk ;;
+    "$option13") shrink_disk ;;
+    "$option14") attach_iso ;;
+    "$option15") detach_iso ;;
+    "$option16") exit 0 ;;
+    *) yad --error --text="$text1" ;;
+esac
+done

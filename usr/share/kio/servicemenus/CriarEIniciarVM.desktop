@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Service
+ServiceTypes=KonqPopupMenu/Plugin
+MimeType=application/x-cd-image
+Actions=CriarEIniciarVM
+Icon=drive-optical
+
+[Desktop Action CriarEIniciarVM]
+Name=Criar e iniciar VM
+Exec=bash -c 'VMISO="%f"; VMNAME=$(basename "$VMISO" .iso); virt-qmod create --name "$VMNAME" --cdrom "$VMISO" && virt-qmod start "$VMNAME" && virt-qmod open "$VMNAME"'
