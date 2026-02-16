@@ -34,15 +34,16 @@ option7="Editar XML da VM"
 option8="Listar snapshots de uma VM"
 option9="Criar um snapshot"
 option10="Deletar um snapshot"
-option11="Exibir informações do disco"
-option12="Aumentar o tamanho do Disco da VM"
-option13="Diminuir o tamanho do Disco da VM"
-option14="Anexar ISO à VM"
-option15="Desanexar ISO da VM"
-option16="Sair"
+option11="Restaurar um snapshot"
+option12="Exibir informações do disco"
+option13="Aumentar o tamanho do Disco da VM"
+option14="Diminuir o tamanho do Disco da VM"
+option15="Anexar ISO à VM"
+option16="Desanexar ISO da VM"
+option17="Sair"
 column1="Opções"
 title1="Gerenciar VMs"
-button1="$option16"
+button1="$option17"
 text1="Opção inválida!"
 # Função para executar comandos com sudo e mensagens do yad
 run_with_sudo() {
@@ -295,16 +296,23 @@ create_snapshot() {
 	VM_NAME=$(echo "$VM_NOME_BRUTO" | head -n 1 | tr -d '[:space:]')
 
 	# 2. Conta quantos snapshots existem (contando linhas que começam com espaço/nome)
-	local TOTAL_SNAPS
-	TOTAL_SNAPS=$(virsh --connect "$SESSION" snapshot-list "$VM_NAME" | sed '1,2d' 2>/dev/null | grep -c "^ [a-zA-Z0-9]")
+	# local TOTAL_SNAPS
+	# TOTAL_SNAPS=$(virsh --connect "$SESSION" snapshot-list "$VM_NAME" | sed '1,2d' 2>/dev/null | grep -c "^ [a-zA-Z0-9]")
 
 	# Se o grep falhar ou não achar nada, garante que é 0
-	[ -z "$TOTAL_SNAPS" ] && TOTAL_SNAPS=0
+	# [ -z "$TOTAL_SNAPS" ] && TOTAL_SNAPS=0
 
-	local PROXIMO_NUMERO=$((TOTAL_SNAPS + 1))
+	# local PROXIMO_NUMERO=$((TOTAL_SNAPS + 1))
+
+	# Se não informou o nome, gera o automático com timestamp
+	local timestamp
+	timestamp=$(date +"%Y%m%d-%H%M%S")
+	local nome_snapshot
+	nome_snapshot="${VM_NAME}-snap-${timestamp}"
 
 	# 3. Define a sugestão limpa
-	local SUGESTAO="${VM_NAME}-snap-${PROXIMO_NUMERO}"
+	# local SUGESTAO="${VM_NAME}-snap-${PROXIMO_NUMERO}"
+	local SUGESTAO="$nome_snapshot"
 
 	# 4. Abre o yad
 	local SNAPSHOT_NAME
@@ -380,6 +388,57 @@ delete_snapshot() {
 				--button="OK:0" --center
 		fi
 	fi
+}
+restore_snapshots() {
+    local VM_NOME_BRUTO
+    # 1. Abre a interface de seleção (ou pega a seleção atual)
+    VM_NOME_BRUTO=$(select_vm nomes)
+
+    # 2. Se o usuário cancelou ou não selecionou nada
+    [[ -z "$VM_NOME_BRUTO" ]] && return 1
+
+    # 3. Limpeza cirúrgica do nome da VM
+    local VM_NAME
+    VM_NAME=$(echo "$VM_NOME_BRUTO" | head -n 1 | tr -d '[:space:]' | tr -d '|')
+
+	# 2. Busca a lista de snapshots existentes para ajudar o usuário
+	# Usamos sed '1,4d' para pular o cabeçalho conforme seu teste anterior
+	local SNAP_LIST
+	SNAP_LIST=$($VIRT_QMOD list_snapshots "$VM_NAME" | sed '1,4d' | awk '{print $1}')
+
+	if [ -z "$SNAP_LIST" ]; then
+		yad --warning --title="Aviso" --text="Nenhum snapshot encontrado para <b>$VM_NAME</b>." --center --button="OK:0"
+		return 1
+	fi
+
+	# 3. Em vez de digitar, o usuário seleciona da lista (Muito mais seguro!)
+	local SNAPSHOT_NAME
+	SNAPSHOT_NAME=$(echo "$SNAP_LIST" | yad --list \
+		--title="Deletar Snapshot" \
+		--text="Selecione o snapshot de <b>$VM_NAME</b> que deseja restaurar:" \
+		--column="Nome do Snapshot" \
+		--width=400 --height=300 --center \
+		--button="Cancelar:1" --button="Restaurar:0" \
+		--separator="")
+
+	[ -z "$SNAPSHOT_NAME" ] && return 1
+    
+    local SNAP_NAME
+    SNAP_NAME=$(echo "$SNAP_LIST" | head -n 1 | tr -d '[:space:]' | tr -d '|')
+
+    # 5. Confirmação Visual
+    if yad --question --title="Confirmar Restauração" \
+        --window-icon="document-revert" \
+        --text="Deseja retornar a VM <b>$VM_NAME</b> para o estado: <b>$SNAP_NAME</b>?\n\n<i>Atenção: O estado atual será perdido!</i>" \
+        --button="Cancelar:1" --button="Restaurar:0" --center; then
+
+        # 6. Chama o backend
+        if $VIRT_QMOD restore_snapshot "$VM_NAME" "$SNAP_NAME"; then
+            yad --info --title="Sucesso" --text="VM restaurada!" --button="OK:0" --center
+        else
+            yad --error --title="Erro" --text="Falha na restauração." --center
+        fi
+    fi
 }
 # Função para exibir informações do disco
 show_disk_info() {
@@ -613,7 +672,8 @@ options=(
 	"$option13"
 	"$option14"
 	"$option15"
-	# "$option16"
+	"$option16"
+	# "$option17"
 )
 
 # Menu principal
@@ -640,12 +700,13 @@ while true; do
 	"$option8") list_snapshots ;;
 	"$option9") create_snapshot ;;
 	"$option10") delete_snapshot ;;
-	"$option11") show_disk_info ;;
-	"$option12") resize_disk ;;
-	"$option13") shrink_disk ;;
-	"$option14") attach_iso ;;
-	"$option15") detach_iso ;;
-	"$option16") exit 0 ;;
+	"$option11") restore_snapshots ;;
+	"$option12") show_disk_info ;;
+	"$option13") resize_disk ;;
+	"$option14") shrink_disk ;;
+	"$option15") attach_iso ;;
+	"$option16") detach_iso ;;
+	"$option17") exit 0 ;;
 	*) yad --error --text="$text1" ;;
 	esac
 done
