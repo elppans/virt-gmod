@@ -567,59 +567,41 @@ shrink_disk() {
 
 # Função para atachar uma ISO na VM e configurar o BOOT CDROM como primeiro boot
 detach_iso() {
-	# 1. Seleção da VM via função gmod
-	local VM_NAME
-	VM_NAME=$(select_vm nomes)
-	[[ -z "$VM_NAME" ]] && return 1
+    local VM_NOME_BRUTO
+    VM_NOME_BRUTO=$(select_vm nomes)
+    [[ -z "$VM_NOME_BRUTO" ]] && return 1
 
-	echo "DEBUG SESSION: $SESSION"
-	echo "DEBUG VM_NAME: [$VM_NAME]" # Os colchetes ajudam a ver espaços vazios
+    local VM_NAME
+    VM_NAME=$(echo "$VM_NOME_BRUTO" | head -n 1 | tr -d '[:space:]' | tr -d '|')
 
-	# 2. Busca as ISOs montadas (usando o SESSION do qemu)
-	# O xargs limpa espaços extras que podem vir da captura
-	local RAW_LIST
-	RAW_LIST=$(virsh --connect "$SESSION" domblklist "$VM_NAME" --details |
-		grep -E "cdrom|iso" | awk '{print $4}' | grep "\.iso$" | tr '\n' '!')
+    # 1. Busca as mídias usando sua nova lógica
+    local MEDIA_LIST
+    MEDIA_LIST=$($VIRT_QMOD list_removable_media "$VM_NAME" | sed '1,2d')
 
-	# Remove o '!' do final da string
-	local ISO_LIST="${RAW_LIST%!}"
+    if [[ -z "$MEDIA_LIST" ]]; then
+        yad --info --title="Aviso" --text="Nenhuma ISO montada encontrada em <b>$VM_NAME</b>." --center --button="OK:0"
+        return 1
+    fi
 
-	echo "DEBUG RAW_LIST: $RAW_LIST"
-	echo "DEBUG ISO_LIST: $ISO_LIST"
-	# Valida se existe algo para desanexar
-	if [[ -z "$ISO_LIST" ]]; then
-		yad --warning --title="Aviso" \
-			--text="Não há ISOs montadas na VM: <b>$VM_NAME</b>" \
-			--center --width=400 \
-			--button="OK:0"
-		return 0
-	fi
+    # 2. Mostra a lista para o usuário escolher qual ejetar
+    local SELECAO
+    SELECAO=$(echo "$MEDIA_LIST" | yad --list --title="Ejetar ISO - $VM_NAME" \
+        --column="Alvo" --column="Caminho da ISO" \
+        --width=600 --height=300 --center \
+        --button="Cancelar:1" --button="Ejetar:0")
 
-	# 3. Seleção da ISO via Combo Box (CB)
-	local SELECAO
-	if ! SELECAO=$(yad --form --title="Desanexar ISO de $VM_NAME" \
-		--field="Selecione o arquivo para ejetar:CB" "$ISO_LIST" \
-		--button="Desanexar:0" --button="Cancelar:1" \
-		--width=500 --center); then
-		return 1 # Usuário cancelou ou fechou a janela
-	fi
+    [[ $? -ne 0 ]] && return 1
 
-	# Extrai o caminho limpo do YAD
-	local ISO_FILE
-	ISO_FILE=$(echo "$SELECAO" | cut -d'|' -f1)
+    # 3. Extrai o caminho da ISO da seleção (segunda coluna)
+    local ISO_PATH
+    ISO_PATH=$(echo "$SELECAO" | cut -d'|' -f2)
 
-	# 4. Execução (Respeitando SC2181)
-	if "$VIRT_QMOD" detach_iso "$VM_NAME" "$ISO_FILE"; then
-		yad --info --title="Sucesso" \
-			--text="A ISO foi desanexada com sucesso!" \
-			--center \
-			--button="OK:0"
-	else
-		yad --error --title="Erro" \
-			--text="Falha ao tentar desanexar o dispositivo." \
-			--center \
-			--button="OK:0"
-	fi
+    # 4. Chama o detach no backend
+    if $VIRT_QMOD detach_iso "$VM_NAME" "$ISO_PATH"; then
+        yad --info --title="Sucesso" --text="ISO ejetada com sucesso!" --center --button="OK:0"
+    else
+        yad --error --title="Erro" --text="Falha ao ejetar a mídia." --center --button="OK:0"
+    fi
 }
 attach_iso() {
 	# 1. Seleção da VM
