@@ -239,7 +239,7 @@ remove() {
 # Função para abrir uma VM no virt-viewer
 open() {
 	VM_NAME=$(select_vm ativos)
-	[ -n "$VM_NAME" ] && $VIRT_QMOD open "$VM_NAME"
+	[ -n "$VM_NAME" ] && $VIRT_QMOD open "$VM_NAME" & disown
 }
 # Função para editar xml da VM
 edit() {
