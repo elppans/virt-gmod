@@ -590,6 +590,7 @@ detach_iso() {
         --width=600 --height=300 --center \
         --button="Cancelar:1" --button="Ejetar:0")
 
+    # shellcheck disable=SC2181
     [[ $? -ne 0 ]] && return 1
 
     # 3. Extrai o caminho da ISO da seleção (segunda coluna)
