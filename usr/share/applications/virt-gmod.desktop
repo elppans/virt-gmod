@@ -1,0 +1,9 @@
+[Desktop Entry]
+Name=Virt GMod
+Comment=Simple Manage virtual machines
+Exec=virt-gmod %u
+Type=Application
+Terminal=false
+Icon=virt-viewer
+Categories=System;Emulator;GTK;
+Keywords=virtualization;libvirt;vm;vmm;qemu;xen;lxc;kvm;
