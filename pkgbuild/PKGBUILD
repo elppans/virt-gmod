@@ -6,8 +6,17 @@ pkgver=1.0.1
 pkgrel=3
 arch=('any')
 license=('CUSTOM')
-depends=('virt-qmod' 'zenity' 'yad' 'vi')
-optdepends=('qemu-desktop' 'qemu-full')
+depends=(
+    'virt-qmod'     # O motor (CLI + Configs)
+    'yad'           # Toolkit principal dos diálogos
+    'virt-viewer'   # Para visualização imediata da VM
+    'polkit'        # Para elevação de privilégio gráfica
+    'bash'
+)
+optdepends=(
+    'qemu-desktop: Para suporte completo a áudio e vídeo no console local'
+    'vi: Caso precise editar arquivos manualmente através da interface'
+)
 pkgdesc="Gerencia Máquinas Virtuais (VMs) utilizando a tecnologia QEMU/KVM (CLI)."
 url="https://github.com/elppans/${pkgname}"
 source=("git+${url}.git#branch=main")

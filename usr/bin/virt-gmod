@@ -129,9 +129,9 @@ select_vm() {
 
 # Função para criar uma nova máquina virtual
 create() {
-	# Solicitar a seleção do arquivo ISO separadamente usando zenity antes do formulário
+	# Solicitar a seleção do arquivo ISO separadamente usando yad antes do formulário
 	local CDROM
-	if ! CDROM=$(zenity --file-selection --title="Selecione a ISO de instalação"); then
+	if ! CDROM=$(yad --file --title="Selecione a ISO de instalação" --window-icon="virt-qmod"); then
 		return
 	fi
 
@@ -239,7 +239,8 @@ remove() {
 # Função para abrir uma VM no virt-viewer
 open() {
 	VM_NAME=$(select_vm ativos)
-	[ -n "$VM_NAME" ] && $VIRT_QMOD open "$VM_NAME" & disown
+	[ -n "$VM_NAME" ] && $VIRT_QMOD open "$VM_NAME" &
+	disown
 }
 # Função para editar xml da VM
 edit() {
@@ -390,16 +391,16 @@ delete_snapshot() {
 	fi
 }
 restore_snapshots() {
-    local VM_NOME_BRUTO
-    # 1. Abre a interface de seleção (ou pega a seleção atual)
-    VM_NOME_BRUTO=$(select_vm nomes)
+	local VM_NOME_BRUTO
+	# 1. Abre a interface de seleção (ou pega a seleção atual)
+	VM_NOME_BRUTO=$(select_vm nomes)
 
-    # 2. Se o usuário cancelou ou não selecionou nada
-    [[ -z "$VM_NOME_BRUTO" ]] && return 1
+	# 2. Se o usuário cancelou ou não selecionou nada
+	[[ -z "$VM_NOME_BRUTO" ]] && return 1
 
-    # 3. Limpeza cirúrgica do nome da VM
-    local VM_NAME
-    VM_NAME=$(echo "$VM_NOME_BRUTO" | head -n 1 | tr -d '[:space:]' | tr -d '|')
+	# 3. Limpeza cirúrgica do nome da VM
+	local VM_NAME
+	VM_NAME=$(echo "$VM_NOME_BRUTO" | head -n 1 | tr -d '[:space:]' | tr -d '|')
 
 	# 2. Busca a lista de snapshots existentes para ajudar o usuário
 	# Usamos sed '1,4d' para pular o cabeçalho conforme seu teste anterior
@@ -422,23 +423,23 @@ restore_snapshots() {
 		--separator="")
 
 	[ -z "$SNAPSHOT_NAME" ] && return 1
-    
-    local SNAP_NAME
-    SNAP_NAME=$(echo "$SNAP_LIST" | head -n 1 | tr -d '[:space:]' | tr -d '|')
 
-    # 5. Confirmação Visual
-    if yad --question --title="Confirmar Restauração" \
-        --window-icon="document-revert" \
-        --text="Deseja retornar a VM <b>$VM_NAME</b> para o estado: <b>$SNAP_NAME</b>?\n\n<i>Atenção: O estado atual será perdido!</i>" \
-        --button="Cancelar:1" --button="Restaurar:0" --center; then
+	local SNAP_NAME
+	SNAP_NAME=$(echo "$SNAP_LIST" | head -n 1 | tr -d '[:space:]' | tr -d '|')
 
-        # 6. Chama o backend
-        if $VIRT_QMOD restore_snapshot "$VM_NAME" "$SNAP_NAME"; then
-            yad --info --title="Sucesso" --text="VM restaurada!" --button="OK:0" --center
-        else
-            yad --error --title="Erro" --text="Falha na restauração." --center
-        fi
-    fi
+	# 5. Confirmação Visual
+	if yad --question --title="Confirmar Restauração" \
+		--window-icon="document-revert" \
+		--text="Deseja retornar a VM <b>$VM_NAME</b> para o estado: <b>$SNAP_NAME</b>?\n\n<i>Atenção: O estado atual será perdido!</i>" \
+		--button="Cancelar:1" --button="Restaurar:0" --center; then
+
+		# 6. Chama o backend
+		if $VIRT_QMOD restore_snapshot "$VM_NAME" "$SNAP_NAME"; then
+			yad --info --title="Sucesso" --text="VM restaurada!" --button="OK:0" --center
+		else
+			yad --error --title="Erro" --text="Falha na restauração." --center
+		fi
+	fi
 }
 # Função para exibir informações do disco
 show_disk_info() {
@@ -567,42 +568,42 @@ shrink_disk() {
 
 # Função para atachar uma ISO na VM e configurar o BOOT CDROM como primeiro boot
 detach_iso() {
-    local VM_NOME_BRUTO
-    VM_NOME_BRUTO=$(select_vm nomes)
-    [[ -z "$VM_NOME_BRUTO" ]] && return 1
+	local VM_NOME_BRUTO
+	VM_NOME_BRUTO=$(select_vm nomes)
+	[[ -z "$VM_NOME_BRUTO" ]] && return 1
 
-    local VM_NAME
-    VM_NAME=$(echo "$VM_NOME_BRUTO" | head -n 1 | tr -d '[:space:]' | tr -d '|')
+	local VM_NAME
+	VM_NAME=$(echo "$VM_NOME_BRUTO" | head -n 1 | tr -d '[:space:]' | tr -d '|')
 
-    # 1. Busca as mídias usando sua nova lógica
-    local MEDIA_LIST
-    MEDIA_LIST=$($VIRT_QMOD list_removable_media "$VM_NAME" | sed '1,2d')
+	# 1. Busca as mídias usando sua nova lógica
+	local MEDIA_LIST
+	MEDIA_LIST=$($VIRT_QMOD list_removable_media "$VM_NAME" | sed '1,2d')
 
-    if [[ -z "$MEDIA_LIST" ]]; then
-        yad --info --title="Aviso" --text="Nenhuma ISO montada encontrada em <b>$VM_NAME</b>." --center --button="OK:0"
-        return 1
-    fi
+	if [[ -z "$MEDIA_LIST" ]]; then
+		yad --info --title="Aviso" --text="Nenhuma ISO montada encontrada em <b>$VM_NAME</b>." --center --button="OK:0"
+		return 1
+	fi
 
-    # 2. Mostra a lista para o usuário escolher qual ejetar
-    local SELECAO
-    SELECAO=$(echo "$MEDIA_LIST" | yad --list --title="Ejetar ISO - $VM_NAME" \
-        --column="Alvo" --column="Caminho da ISO" \
-        --width=600 --height=300 --center \
-        --button="Cancelar:1" --button="Ejetar:0")
+	# 2. Mostra a lista para o usuário escolher qual ejetar
+	local SELECAO
+	SELECAO=$(echo "$MEDIA_LIST" | yad --list --title="Ejetar ISO - $VM_NAME" \
+		--column="Alvo" --column="Caminho da ISO" \
+		--width=600 --height=300 --center \
+		--button="Cancelar:1" --button="Ejetar:0")
 
-    # shellcheck disable=SC2181
-    [[ $? -ne 0 ]] && return 1
+	# shellcheck disable=SC2181
+	[[ $? -ne 0 ]] && return 1
 
-    # 3. Extrai o caminho da ISO da seleção (segunda coluna)
-    local ISO_PATH
-    ISO_PATH=$(echo "$SELECAO" | cut -d'|' -f2)
+	# 3. Extrai o caminho da ISO da seleção (segunda coluna)
+	local ISO_PATH
+	ISO_PATH=$(echo "$SELECAO" | cut -d'|' -f2)
 
-    # 4. Chama o detach no backend
-    if $VIRT_QMOD detach_iso "$VM_NAME" "$ISO_PATH"; then
-        yad --info --title="Sucesso" --text="ISO ejetada com sucesso!" --center --button="OK:0"
-    else
-        yad --error --title="Erro" --text="Falha ao ejetar a mídia." --center --button="OK:0"
-    fi
+	# 4. Chama o detach no backend
+	if $VIRT_QMOD detach_iso "$VM_NAME" "$ISO_PATH"; then
+		yad --info --title="Sucesso" --text="ISO ejetada com sucesso!" --center --button="OK:0"
+	else
+		yad --error --title="Erro" --text="Falha ao ejetar a mídia." --center --button="OK:0"
+	fi
 }
 attach_iso() {
 	# 1. Seleção da VM
