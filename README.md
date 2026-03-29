@@ -57,7 +57,10 @@ virt-qmod remove minhaVM
 
 ## Atualizações Recentes
 - **04/03/2025**: Adicionada a funcionalidade "Action Menu" no Dolphin para criar e iniciar VMs diretamente com o botão direito do mouse sobre a ISO.
-
+___
+- Leituras recomendadas:  
+[Compartilhamento de Pastas e Performance no KVM/QEMU (Windows & Linux)](https://elppans.github.io/doc-linux/linux_virt_qemu_spice_compartilhamento_public)
+___
 ## Autor
 Desenvolvido por **Marcelo (Elppans)**  
 Contato: `<marcelo*@email*>`
